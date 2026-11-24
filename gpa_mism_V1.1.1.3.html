@@ -34,7 +34,11 @@
   .ring .c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
   .ring .v{font-size:40px;font-weight:800;letter-spacing:-.02em}
   .ring .l{font-size:12px;color:var(--muted)}
-  .side{flex:1;display:grid;gap:12px}
+  .side{flex:1;display:grid;gap:12px;grid-template-columns:1fr 1fr}
+  .side .wide{grid-column:1/-1}
+  .tile.cls .n{display:flex;align-items:center;gap:8px}
+  .tile.cls .tag{font-size:14px;padding:4px 12px}
+  .tile .hint{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);margin-top:4px}
   .tile{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:16px;padding:12px 14px}
   .tile .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
   .tile .n{font-size:22px;font-weight:700;margin-top:2px}
@@ -111,7 +115,6 @@
     .hero{flex-direction:column;align-items:stretch}
     .ring{margin:0 auto}
     .side{grid-template-columns:1fr 1fr}
-    .side .tile:last-child{grid-column:1/-1}
   }
   @media (max-width:420px){
     .item{grid-template-columns:1fr auto;}
@@ -144,9 +147,10 @@
         <div class="c"><div class="v" id="gpa">0.00</div><div class="l">Overall GPA / 4.00</div></div>
       </div>
       <div class="side">
-        <div class="tile"><div class="k">Credits earned</div><div class="n"><span id="credits">0</span><span style="font-size:14px;color:var(--muted)"> / <span id="total">0</span></span></div><div class="bar"><i id="cbar"></i></div></div>
+        <div class="tile wide"><div class="k">Credits earned</div><div class="n"><span id="credits">0</span><span style="font-size:14px;color:var(--muted)"> / <span id="total">0</span></span></div><div class="bar"><i id="cbar"></i></div></div>
         <div class="tile"><div class="k">Subjects graded</div><div class="n" id="count">0</div></div>
         <div class="tile"><div class="k">Best semester</div><div class="n" id="best">—</div></div>
+        <div class="tile cls wide"><div class="k">Overall class</div><div class="n" id="cls">—</div><div class="hint" title="Distinction 3.70+ · Merit 3.30+ · Pass 2.70+">Dist. 3.70+ · Merit 3.30+ · Pass 2.70+</div></div>
       </div>
     </div>
     <div class="card chart">
@@ -162,7 +166,9 @@
 
   <div class="card sec">
     <div class="foot" style="margin-top:0">
-      <div style="font-size:12px;color:var(--muted)">Pick a grade for each subject you've completed. Only one elective counts. GPA = Σ(GPV × Credits) ÷ Σ Credits, rounded to 2 decimals. Saved in this browser.</div>
+      <div style="font-size:12px;color:var(--muted)">Pick a grade for each subject you've completed. Only one elective counts. GPA = Σ(GPV × Credits) ÷ Σ Credits, rounded to 2 decimals.
+        <label class="opt" style="margin:10px 0 0"><input type="checkbox" id="remember"> Remember my grades on this device — leave unticked on shared or public computers. When unticked, grades are cleared when you close this tab.</label>
+      </div>
       <button class="btn ghost" id="clear">Clear all grades</button>
     </div>
     <details>
@@ -202,6 +208,8 @@ const SCALE=[
   {min:0,max:29,g:"E",v:0.00,s:"Not Completed"}
 ];
 const byGrade=Object.fromEntries(SCALE.map(r=>[r.g,r]));
+// Overall class from GPA, using the Grade Point Value bands of the grading scheme
+const classOf=g=>g>=3.70?"Distinction":g>=3.30?"Merit":g>=2.70?"Pass":"Not Completed";
 const SUBJECTS=[
   ["I","MISM 6101",3,"Fundamentals of Information Systems and New Trends"],
   ["I","MISM 6102",3,"Information Systems Project Management"],
@@ -225,13 +233,19 @@ const SUBJECTS=[
 ];
 const SEMS=["I","II","III","IV"];
 const KEY="gpa-calc-mism-v1";
+const REM="gpa-calc-mism-remember";
+let remember=false;
+try{remember=localStorage.getItem(REM)==="1"}catch(e){}
+const store=()=>{try{return remember?localStorage:sessionStorage}catch(e){return null}};
 let saved={};
-try{saved=JSON.parse(localStorage.getItem(KEY))||{}}catch(e){}
+try{saved=JSON.parse(store().getItem(KEY))||{}}catch(e){}
+// Not opted in: never leave grades behind in this browser
+if(!remember){try{localStorage.removeItem(KEY)}catch(e){}}
 const courses=SUBJECTS.map(([sem,code,cr,name,el])=>({sem,code,name,el:!!el,grade:(saved[code]&&saved[code].grade)||"",credits:cr}));
 {let seen=false;courses.forEach(c=>{if(c.el&&c.grade){if(seen)c.grade="";seen=true}})}
 // Total programme credits: all core subjects + one elective
 const TOTAL=courses.filter(c=>!c.el).reduce((a,c)=>a+c.credits,0)+(courses.find(c=>c.el)||{credits:0}).credits;
-function save(){const o={};courses.forEach(c=>{if(c.grade)o[c.code]={grade:c.grade}});try{localStorage.setItem(KEY,JSON.stringify(o))}catch(e){}}
+function save(){const o={};courses.forEach(c=>{if(c.grade)o[c.code]={grade:c.grade}});try{store().setItem(KEY,JSON.stringify(o))}catch(e){}}
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const opts=sel=>'<option value="">—</option>'+SCALE.map(r=>`<option ${r.g===sel?"selected":""}>${r.g}</option>`).join("");
 const round=x=>Math.round((x+1e-9)*100)/100;
@@ -279,7 +293,9 @@ function update(){
     document.querySelector(`[data-fill="${s}"]`).style.height=t?(g/4*100)+"%":"0";
     if(t&&(!best||g>best.g))best={s,g};
   });
-  document.getElementById("best").textContent=best?`Sem ${best.s} · ${best.g.toFixed(2)}`:"—";
+  const k=cr?classOf(gpa):null;
+  document.getElementById("cls").innerHTML=k?`<span class="tag ${k.replace(" ","")}">${k}</span>`:"—";
+  document.getElementById("best").innerHTML=best?`Sem ${best.s} <span style="font-size:14px;color:var(--muted);font-weight:600">${best.g.toFixed(2)}</span>`:"—";
   save();
 }
 
@@ -298,6 +314,20 @@ document.getElementById("clear").onclick=e=>{
 document.querySelector("#scale tbody").innerHTML=SCALE.map(r=>`<tr><td>${String(r.min).padStart(2,"0")}–${r.max}</td><td>${r.g}</td><td>${r.v.toFixed(2)}</td><td><span class="tag ${r.s.replace(" ","")}">${r.s}</span></td></tr>`).join("");
 render();
 
+// Remember-on-this-device toggle
+(function(){
+  const cb=document.getElementById("remember");if(!cb)return;
+  cb.checked=remember;
+  cb.onchange=()=>{
+    remember=cb.checked;
+    try{
+      if(remember){localStorage.setItem(REM,"1");sessionStorage.removeItem(KEY)}
+      else{localStorage.removeItem(REM);localStorage.removeItem(KEY)}
+    }catch(e){}
+    save();
+  };
+})();
+
 // Share summary
 (function(){
   const modal=document.getElementById("modal"),pre=document.getElementById("summary"),inc=document.getElementById("incSubj"),wa=document.getElementById("waBtn"),note=document.getElementById("mnote");
@@ -307,6 +337,7 @@ render();
     const L=["🎓 MISM GPA Tracker",""];
     if(!cr){L.push("No grades entered yet.");return L.join("\n")}
     L.push(`Overall GPA: ${round(sum/cr).toFixed(2)} / 4.00`);
+    L.push(`Overall class: ${classOf(round(sum/cr))}`);
     L.push(`Credits: ${cr} / ${TOTAL}`);
     SEMS.forEach(s=>{const t=sem[s];if(!t)return;L.push("");L.push(`Semester ${s}: GPA ${round(t.s/t.c).toFixed(2)} (${t.c} credits)`);
       if(inc.checked)t.l.forEach(c=>L.push(`  • ${c.code.replace("MISM ","")} ${c.name} — ${c.grade}`))});
